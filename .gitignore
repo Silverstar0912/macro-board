@@ -1,0 +1,26 @@
+# ── 비밀값: 이 저장소는 공개다. 키는 GitHub Secrets 로만 넘긴다 ──
+.env
+*.key
+mykey*.txt
+*secret*
+*token*.txt
+
+# ── 로컬 데이터: 클라우드는 자체 DB 를 캐시로 이어받는다 ──
+data/*.db
+data/*.db-wal
+data/*.db-shm
+data/*.log
+data/snapshot.html
+data/seed_events.json
+_site/
+
+# ── 로컬 전용 (윈도우 작업 스케줄러용, 클라우드 전환 후 불필요) ──
+daily.bat
+watch.bat
+
+# ── 기타 ──
+__pycache__/
+*.pyc
+.claude/
+.venv/
+venv/

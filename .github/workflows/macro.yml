@@ -1,0 +1,144 @@
+# 거시경제 대시보드 — 클라우드 자동 실행
+#
+# PC 가 꺼져 있어도 돌도록 GitHub Actions 에서 30분마다 한 번 틱을 돈다.
+#   · 주기가 된 수집기만 실행 (수집기별 주기는 DB 의 실행 기록으로 지킨다)
+#   · 새 지표가 발표됐으면 텔레그램으로 즉시 알림
+#   · 07:25(KST) 이후 첫 틱이 그날 아침 브리핑을 보낸다
+#   · 공유 보드를 새로 만들어 GitHub Pages 에 배포
+#
+# 아침 브리핑을 별도 cron 으로 나누지 않는 이유: 같은 concurrency 그룹에서
+# 대기 중인 실행은 새 실행이 오면 취소된다. 브리핑 실행이 틱에 밀려 취소되는 일이
+# 없도록 모든 실행을 같은 틱으로 만들고, 브리핑 여부는 틱 안에서 판단한다.
+
+name: 거시 대시보드
+
+on:
+  schedule:
+    # 정각·30분은 GitHub 예약 실행이 몰려 크게 밀린다. 25분·55분에 띄운다.
+    # 22:25 UTC = 07:25 KST 틱이 아침 브리핑을 보낸다.
+    - cron: "25,55 * * * *"
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "실행 모드"
+        type: choice
+        options: [tick, brief, backfill]
+        default: tick
+
+# DB 를 캐시로 이어받으므로 두 실행이 동시에 돌면 한쪽 기록이 사라진다
+# (알림 기준선이 되돌아가 같은 발표를 두 번 알리게 된다). 한 번에 하나씩만 돈다.
+concurrency:
+  group: macro-dashboard
+  cancel-in-progress: false
+
+permissions: {}
+
+env:
+  TZ: Asia/Seoul
+  PYTHONIOENCODING: utf-8
+  ENABLE_SCHEDULER: "0"
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: write          # 월 1회 하트비트 커밋용
+    outputs:
+      board: ${{ steps.board.outputs.ready }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: 패키지 설치
+        run: pip install -r requirements.txt
+
+      - name: DB 복원
+        id: db
+        uses: actions/cache/restore@v6
+        with:
+          path: data/macro.db
+          key: macro-db-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: macro-db-
+
+      - name: 수집 · 알림 · 브리핑
+        env:
+          FRED_API_KEY: ${{ secrets.FRED_API_KEY }}
+          ECOS_API_KEY: ${{ secrets.ECOS_API_KEY }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          SNAPSHOT_URL: https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/
+          MODE: ${{ inputs.mode || 'tick' }}
+          DB_RESTORED: ${{ steps.db.outputs.cache-matched-key }}
+        run: |
+          if [ -z "$DB_RESTORED" ] && [ "$MODE" != "backfill" ]; then
+            # 캐시가 없으면(최초 실행·캐시 만료) 전 이력부터 받는다.
+            # 이때 알림 기준선도 새로 세워지므로 과거 발표가 무더기로 알려지지 않는다.
+            echo "::notice::저장된 DB 가 없어 전체 이력부터 받습니다"
+            python run.py --backfill
+          fi
+          case "$MODE" in
+            backfill) python run.py --backfill ;;
+            brief)    python run.py --daily ;;
+            *)        python run.py --tick ;;
+          esac
+
+      - name: 공유 보드 생성
+        id: board
+        if: ${{ !cancelled() && hashFiles('data/macro.db') != '' }}
+        run: |
+          python run.py --snapshot _site/index.html
+          echo "ready=true" >> "$GITHUB_OUTPUT"
+
+      - name: DB 정리
+        if: ${{ !cancelled() && hashFiles('data/macro.db') != '' }}
+        # WAL 에만 남은 쓰기를 본 파일로 합친다. 안 그러면 캐시에 최근 기록이 빠진다.
+        run: python -c "import sqlite3; c=sqlite3.connect('data/macro.db'); c.execute('PRAGMA wal_checkpoint(TRUNCATE)'); c.close()"
+
+      - name: DB 저장
+        if: ${{ !cancelled() && hashFiles('data/macro.db') != '' }}
+        uses: actions/cache/save@v6
+        with:
+          path: data/macro.db
+          key: macro-db-${{ github.run_id }}-${{ github.run_attempt }}
+
+      - name: 보드 업로드
+        if: ${{ !cancelled() && steps.board.outputs.ready == 'true' }}
+        uses: actions/upload-pages-artifact@v5
+        with:
+          path: _site
+
+      - name: 저장소 활동 유지 (월 1회)
+        # 공개 저장소의 예약 실행은 60일간 저장소 활동이 없으면 GitHub 이 자동으로 끈다.
+        # 이 워크플로는 커밋을 만들지 않으므로, 달이 바뀔 때 한 번 흔적을 남긴다.
+        if: ${{ !cancelled() }}
+        run: |
+          MONTH="$(date +%Y-%m)"
+          if grep -q "$MONTH" .github/heartbeat 2>/dev/null; then exit 0; fi
+          echo "$MONTH  마지막 확인 $(date -Iseconds)" > .github/heartbeat
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add .github/heartbeat
+          git commit -m "chore: 월간 하트비트 ($MONTH) — 예약 실행 유지"
+          git pull --rebase origin "${{ github.ref_name }}"
+          git push origin "HEAD:${{ github.ref_name }}"
+
+  deploy:
+    needs: run
+    if: ${{ !cancelled() && needs.run.outputs.board == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v5

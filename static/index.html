@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>거시경제지표 대시보드</title>
+<link rel="stylesheet" href="/static/css/style.css">
+<script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"></script>
+</head>
+<body>
+
+<header class="topbar">
+  <div class="topbar__title">
+    <h1>거시경제지표 대시보드</h1>
+    <span class="topbar__sub">채권금리 · 물가 · 정책금리 · 발표일정 · 정책당국 발언</span>
+  </div>
+  <div class="topbar__right">
+    <div id="statusBadges" class="badges"></div>
+    <button id="refreshBtn" class="btn">지금 갱신</button>
+  </div>
+</header>
+
+<nav class="tabs">
+  <button class="tab is-active" data-tab="overview">지표 현황</button>
+  <button class="tab" data-tab="history">과거 추이</button>
+  <button class="tab" data-tab="curve">수익률곡선</button>
+  <button class="tab" data-tab="calendar">발표일정</button>
+  <button class="tab" data-tab="speeches">주요 발언</button>
+  <button class="tab" data-tab="docs">연준 회의록</button>
+</nav>
+
+<main>
+  <!-- ─────────────── 지표 현황 ─────────────── -->
+  <section id="tab-overview" class="panel is-active">
+    <div id="kpiGroups"></div>
+  </section>
+
+  <!-- ─────────────── 과거 추이 ─────────────── -->
+  <section id="tab-history" class="panel">
+    <div class="toolbar">
+      <div class="toolbar__group">
+        <span class="toolbar__label">기간</span>
+        <div id="rangeToggle" class="segmented">
+          <button data-range="1Y">1Y</button>
+          <button data-range="3Y">3Y</button>
+          <button data-range="5Y" class="is-active">5Y</button>
+          <button data-range="10Y">10Y</button>
+          <button data-range="MAX">MAX</button>
+        </div>
+      </div>
+      <div class="toolbar__group toolbar__group--grow">
+        <span class="toolbar__label">지표 (최대 4개)</span>
+        <div id="seriesChips" class="chips"></div>
+      </div>
+    </div>
+    <div id="historyChart" class="chart chart--tall"></div>
+    <p class="note">여러 지표를 함께 고르면 단위가 다른 지표는 오른쪽 축에 그려집니다.</p>
+  </section>
+
+  <!-- ─────────────── 수익률곡선 ─────────────── -->
+  <section id="tab-curve" class="panel">
+    <div id="curveChart" class="chart chart--tall"></div>
+    <p class="note">미 재무부 일별 국채 수익률곡선. 최신 · 1개월 전 · 1년 전을 비교합니다.</p>
+  </section>
+
+  <!-- ─────────────── 발표일정 ─────────────── -->
+  <section id="tab-calendar" class="panel">
+    <div class="toolbar">
+      <div class="toolbar__group">
+        <span class="toolbar__label">국가</span>
+        <div id="countryToggle" class="segmented">
+          <button data-country="" class="is-active">전체</button>
+          <button data-country="US">미국</button>
+          <button data-country="KR">한국</button>
+        </div>
+      </div>
+      <div class="toolbar__group">
+        <span class="toolbar__label">중요도</span>
+        <div id="importanceToggle" class="segmented">
+          <button data-imp="1" class="is-active">전체</button>
+          <button data-imp="2">★★ 이상</button>
+          <button data-imp="3">★★★</button>
+        </div>
+      </div>
+      <a class="btn btn--ghost" href="/api/calendar.ics" download>iCal 내보내기</a>
+    </div>
+    <div class="cal-layout">
+      <div class="card">
+        <h2 class="card__title">다가오는 7일</h2>
+        <div id="upcomingList" class="upcoming"></div>
+      </div>
+      <div class="card">
+        <div class="card__head">
+          <h2 class="card__title" id="monthLabel"></h2>
+          <div class="segmented">
+            <button id="prevMonth">‹</button>
+            <button id="nextMonth">›</button>
+          </div>
+        </div>
+        <div id="monthGrid" class="month"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ─────────────── 주요 발언 ─────────────── -->
+  <section id="tab-speeches" class="panel">
+    <div class="toolbar">
+      <div class="toolbar__group">
+        <span class="toolbar__label">톤</span>
+        <div id="toneToggle" class="segmented">
+          <button data-tone="" class="is-active">전체</button>
+          <button data-tone="hawkish">매파</button>
+          <button data-tone="dovish">비둘기파</button>
+          <button data-tone="neutral">중립</button>
+        </div>
+      </div>
+      <div id="toneStats" class="tone-stats"></div>
+    </div>
+    <div id="speechList" class="feed"></div>
+    <p class="note">
+      톤 태깅은 원문 키워드 기반 휴리스틱입니다. 해석 보조용이며 판단은 원문 확인을 원칙으로 합니다.
+    </p>
+  </section>
+  <!-- ─────────────── 연준 회의록 ─────────────── -->
+  <section id="tab-docs" class="panel">
+    <div class="toolbar">
+      <div class="toolbar__group">
+        <span class="toolbar__label">종류</span>
+        <div id="docTypeToggle" class="segmented">
+          <button data-type="" class="is-active">전체</button>
+          <button data-type="minutes">회의록</button>
+          <button data-type="statement">성명</button>
+        </div>
+      </div>
+      <div id="docStatus" class="tone-stats"></div>
+    </div>
+    <div id="docList" class="docs"></div>
+    <p class="note">
+      한글 요약은 원문을 정책 결정·물가·고용·향후 방향으로 압축한 것입니다.
+      원문 링크를 함께 두었으니 판단이 필요한 대목은 원문을 확인하세요.
+    </p>
+  </section>
+</main>
+
+<footer class="footer">
+  출처: U.S. Treasury · Federal Reserve · FRED · 한국은행 ECOS &nbsp;|&nbsp;
+  본 대시보드는 공개 데이터를 취합·표시하는 정보 도구이며 투자 자문이 아닙니다.
+</footer>
+
+<script src="/static/js/api.js"></script>
+<script src="/static/js/charts.js"></script>
+<script src="/static/js/calendar.js"></script>
+<script src="/static/js/speeches.js"></script>
+<script src="/static/js/docs.js"></script>
+<script src="/static/js/app.js"></script>
+</body>
+</html>
