@@ -113,7 +113,7 @@ def _send_brief_only() -> None:
     def job() -> Result:
         if not telegram.configured():
             return Result("brief", "skipped", 0, "텔레그램 미설정")
-        results = telegram.send(brief.build())
+        results = telegram.send_brief_with_file(brief.build())
         ok = [r for r in results if r["ok"]]
         bad = [f"{r['chat_id']}: {r.get('error', '')}"[:80]
                for r in results if not r["ok"]]

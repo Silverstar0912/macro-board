@@ -178,7 +178,7 @@ def main() -> int:
             print("  python run.py --telegram-setup 으로 먼저 설정하세요.")
             print()
             return 1
-        results = telegram.send(brief.build())
+        results = telegram.send_brief_with_file(brief.build())
         print()
         for res in results:
             if res["ok"]:

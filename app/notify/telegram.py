@@ -70,6 +70,47 @@ def send(text: str, chat_id: str | None = None) -> list[dict]:
     return results
 
 
+def send_document(path, caption: str = "", chat_id: str | None = None) -> list[dict]:
+    """파일(정적 HTML 브리핑) 첨부 발송 — 텍스트 브리핑 다음에 붙인다."""
+    from pathlib import Path
+    p = Path(path)
+    data = p.read_bytes()
+    targets = [chat_id] if chat_id else TELEGRAM_CHAT_IDS
+    results = []
+    for target in targets:
+        try:
+            resp = requests.post(API.format(token=TELEGRAM_BOT_TOKEN, method="sendDocument"),
+                                 data={"chat_id": target, "caption": caption[:1024], "parse_mode": "HTML"},
+                                 files={"document": (p.name, data, "text/html")}, timeout=120)
+            body = resp.json()
+            if not body.get("ok"):
+                raise RuntimeError(f"{body.get('error_code')} {body.get('description')}")
+            results.append({"chat_id": target, "ok": True, "message_id": body["result"].get("message_id")})
+        except Exception as exc:  # noqa: BLE001
+            log.warning("[%s] 파일 발송 실패: %s", target, exc)
+            results.append({"chat_id": target, "ok": False, "error": str(exc)})
+    return results
+
+
+def send_brief_with_file(brief_text: str) -> list[dict]:
+    """브리핑 텍스트를 보내고, 성공한 곳이 있으면 정적 HTML 리포트를 파일로 덧붙인다.
+    파일 쪽이 실패해도 텍스트 발송 결과는 그대로 돌려준다(브리핑이 끊기지 않게)."""
+    results = send(brief_text)
+    if any(r["ok"] for r in results):
+        try:
+            from ..config import DATA_DIR
+            from ..services import brief_html
+            from datetime import datetime
+            from zoneinfo import ZoneInfo
+            today = datetime.now(ZoneInfo("Asia/Seoul")).strftime("%Y%m%d")
+            page = brief_html.write(DATA_DIR / "reports" / f"이마고리서치_거시브리핑_{today}.html")
+            for r in send_document(page, "📎 거시경제 브리핑 리포트 — 지표별 값·변화·1년 추이, 발표일정, FOMC 회의록"):
+                log.info("[%s] 파일 %s", r["chat_id"], "발송" if r["ok"] else f"실패: {r.get('error')}")
+        except Exception as exc:  # noqa: BLE001
+            log.warning("브리핑 HTML 생성·첨부 실패: %s", exc)
+    return results
+
+
 def me(token: str | None = None) -> dict:
     """봇 토큰 확인용 — 봇 이름/username 을 돌려준다."""
     return _call("getMe", token=token)

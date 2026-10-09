@@ -24,3 +24,6 @@ __pycache__/
 .claude/
 .venv/
 venv/
+
+# 텔레그램 첨부용 정적 브리핑 리포트 (실행 때마다 생성)
+data/reports/
