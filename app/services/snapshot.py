@@ -183,6 +183,7 @@ body {
   font-size:clamp(28px,5vw,40px); line-height:1.15; margin:0;
   letter-spacing:-.02em; text-wrap:balance;
 }
+.provider { font-size:14px; color:var(--dim); margin-top:8px; letter-spacing:.02em; }
 .stamp {
   display:flex; flex-wrap:wrap; gap:6px 18px; justify-content:space-between;
   font-size:12px; color:var(--dim); padding:10px 0 0;
@@ -304,6 +305,7 @@ _BODY = """<div class="page">
 <header class="masthead">
   <div class="eyebrow">Macro Snapshot · 한국은행 · 미 재무부 · 연준 · FRED</div>
   <h1>거시 브리핑 보드</h1>
+  <div class="provider">이마고 리서치 제공</div>
 </header>
 <div class="stamp">
   <span id="stampTime"></span>

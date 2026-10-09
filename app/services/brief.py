@@ -63,6 +63,7 @@ def build(now: datetime | None = None) -> str:
     by_code = {i["code"]: i for i in ind_svc.summary()}
 
     head = (f"<b>📊 거시경제 브리핑</b>\n"
+            f"<i>이마고 리서치 제공</i>\n"
             f"{today.strftime('%Y년 %m월 %d일')} ({WEEKDAY_KO[today.weekday()]})\n")
     lines = [head]
 
